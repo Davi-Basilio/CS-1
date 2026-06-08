@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS-1</title>
+    <link rel="icon" type="image/png" href="CS.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="ui">
+        <h2>Vida: <span id="hp">100</span></h2>
+        <h3>Kills: <span id="kills">0</span></h3>
+        <hr>
+        <div>[1] Pistola <span id="w1"></span></div>
+        <div>[2] Fuzil <span id="w2"></span></div>
+        <div>[3] Faca <img src="faca.png" alt="Faca" style="width:24px; height:auto; vertical-align:middle; margin-left:5px;"> <span id="w3"></span></div>
+    </div>
+
+    <div id="gameover">
+        <h1>VOCÊ MORREU!</h1>
+        <p>Pressione ESPAÇO para reiniciar</p>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script src="script.js"></script>
+</body>
+</html>
