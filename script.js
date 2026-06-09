@@ -46,7 +46,7 @@ let firstGameAfterDeath = false;
 const WEAPONS = [
     { name: 'Pistola', damage: 25, speed: 12, fireRate: 400, color: '#aaa', type: 'range' },
     { name: 'Fuzil', damage: 15, speed: 15, fireRate: 100, color: '#f39c12', type: 'range' },
-    { name: 'Faca', damage: 60, range: 40, fireRate: 600, color: '#ddd', type: 'melee' }
+    { name: 'Faca', damage: 100, range: 40, fireRate: 600, color: '#ddd', type: 'melee' }
 ];
 
 const walls = [
