@@ -1,6 +1,6 @@
 <div align="center">
   <h1 align="center">CS -1</h1>
-  <h3 align="center">Jogo que claramente inspirou o Counter-Strike</h3>
+  <h3 align="center">Jogo que claramente inspirou o Counter-Strike (CS)</h3>
 </div>
 
 
