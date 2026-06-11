@@ -46,3 +46,9 @@ h1, h2, h3 {
     color: #f1c40f; 
     font-weight: bold; 
 }
+
+.ammo-text {
+    font-size: 0.9em;
+    color: #bdc3c7;
+    margin-left: 8px;
+}
