@@ -6,10 +6,15 @@ canvas.height = window.innerHeight;
 
 const hpUI = document.getElementById('hp');
 const killsUI = document.getElementById('kills');
+const levelUI = document.getElementById('level');
 const gameoverUI = document.getElementById('gameover');
 const w1UI = document.getElementById('w1');
 const w2UI = document.getElementById('w2');
 const w3UI = document.getElementById('w3');
+const w4UI = document.getElementById('w4');
+const ammo1UI = document.getElementById('ammo1');
+const ammo2UI = document.getElementById('ammo2');
+const ammo3UI = document.getElementById('ammo3');
 
 const keys = { w: false, a: false, s: false, d: false };
 const mouse = { x: canvas.width / 2, y: canvas.height / 2, down: false };
@@ -18,7 +23,8 @@ window.addEventListener('keydown', e => {
     if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = true;
     if (e.key === '1') player.changeWeapon(0);
     if (e.key === '2') player.changeWeapon(1);
-    if (e.key === '3') player.changeWeapon(2);
+    if (e.key === '3') player.changeWeapon(2); 
+    if (e.key === '4') player.changeWeapon(3); 
     if (e.key === ' ' && gameState === 'gameover') resetGame();
 });
 
@@ -39,22 +45,110 @@ let gameState = 'playing';
 let bullets = [];
 let enemies = [];
 let particles = [];
+let items = [];
+let explosions = [];
 let kills = 0;
-let enemyMaxLimit = 2;
-let firstGameAfterDeath = false;
+let level = 1;
 
 const WEAPONS = [
     { name: 'Pistola', damage: 25, speed: 12, fireRate: 400, color: '#aaa', type: 'range' },
     { name: 'Fuzil', damage: 15, speed: 15, fireRate: 100, color: '#f39c12', type: 'range' },
-    { name: 'Faca', damage: 100, range: 40, fireRate: 600, color: '#ddd', type: 'melee' }
+    { name: 'Bazooka', damage: 100, speed: 4, fireRate: 1000, color: '#2ecc71', type: 'range' }, 
+    { name: 'Faca', damage: 100, range: 65, fireRate: 600, color: '#ddd', type: 'melee' }
 ];
 
 const walls = [
     { x: canvas.width * 0.2, y: canvas.height * 0.2, w: 200, h: 50 },
     { x: canvas.width * 0.7, y: canvas.height * 0.3, w: 50, h: 300 },
     { x: canvas.width * 0.4, y: canvas.height * 0.6, w: 300, h: 50 },
-    { x: canvas.width * 0.1, y: canvas.height * 0.7, w: 150, h: 150 }
+    { x: canvas.width * 0.1, y: canvas.height * 0.7, w: 150, h: 150 },
+    { x: canvas.width * 0.5, y: canvas.height * 0.1, w: 50, h: 200 },
+    { x: canvas.width * 0.8, y: canvas.height * 0.8, w: 200, h: 50 },
+    { x: canvas.width * 0.2, y: canvas.height * 0.5, w: 50, h: 100 }
 ];
+
+const chocolateImg = new Image();
+chocolateImg.src = 'barra.png';
+
+const raioImg = new Image();
+raioImg.src = 'raio.png';
+
+class Item {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 15;
+        this.active = true;
+    }
+    update() {
+        if (Math.hypot(player.x - this.x, player.y - this.y) < player.radius + this.radius) {
+            player.hp = Math.min(100, player.hp + 40);
+            createParticles(this.x, this.y, '#2ecc71', 15);
+            this.active = false;
+        }
+    }
+    draw() {
+        if (chocolateImg.complete && chocolateImg.naturalHeight !== 0) {
+            ctx.drawImage(chocolateImg, this.x - 15, this.y - 15, 30, 30);
+        } else {
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(this.x - 10, this.y - 10, 20, 20);
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px Arial';
+            ctx.fillText('barra.png', this.x - 22, this.y - 15);
+        }
+    }
+}
+
+class Explosion {
+    constructor(x, y, radius, owner) {
+        this.x = x;
+        this.y = y;
+        this.radius = radius;
+        this.owner = owner;
+        this.life = 1.0;
+        this.active = true;
+
+        let explosionDamage = 50;
+
+        // Modificado aqui: Qualquer um no raio da explosão toma dano (independente de quem atirou)
+        
+        // Verifica o jogador
+        let distToPlayer = Math.hypot(player.x - this.x, player.y - this.y);
+        if (distToPlayer < this.radius + player.radius) {
+            player.takeDamage(explosionDamage);
+        }
+
+        // Verifica todos os bots/inimigos
+        enemies.forEach(enemy => {
+            let distToEnemy = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+            if (distToEnemy < this.radius + enemy.radius) {
+                enemy.takeDamage(explosionDamage);
+            }
+        });
+    }
+    update() {
+        this.life -= 0.04;
+        if (this.life <= 0) this.active = false;
+    }
+    draw() {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, this.life);
+        if (raioImg.complete && raioImg.naturalHeight !== 0) {
+            ctx.drawImage(raioImg, this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+        } else {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius * (1 - this.life * 0.5), 0, Math.PI * 2);
+            ctx.strokeStyle = '#2ecc71';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            ctx.fillStyle = '#2ecc71';
+            ctx.font = '14px Courier New';
+            ctx.fillText('raio.png', this.x - 30, this.y);
+        }
+        ctx.restore();
+    }
+}
 
 class Player {
     constructor() {
@@ -65,12 +159,15 @@ class Player {
         this.hp = 100;
         this.weaponIndex = 0;
         this.lastShot = 0;
+        
+        this.maxAmmo = [25, 100, 1, Infinity];
+        this.ammo = [25, 100, 1, Infinity];
     }
 
     update() {
         let dx = 0, dy = 0;
         if (keys.w) dy -= this.speed;
-        if (keys.s) dy += this.speed;
+        if (keys.s) dy += this.speed; // Bug do dy corrigido aqui!
         if (keys.a) dx -= this.speed;
         if (keys.d) dx += this.speed;
 
@@ -96,11 +193,15 @@ class Player {
         const now = Date.now();
         const weapon = WEAPONS[this.weaponIndex];
         
+        if (weapon.type === 'range' && this.ammo[this.weaponIndex] <= 0) return;
+
         if (now - this.lastShot >= weapon.fireRate) {
             let angle = Math.atan2(mouse.y - this.y, mouse.x - this.x);
             
             if (weapon.type === 'range') {
-                bullets.push(new Bullet(this.x, this.y, angle, weapon.speed, weapon.damage, 'player', weapon.color));
+                let isBazooka = (weapon.name === 'Bazooka');
+                bullets.push(new Bullet(this.x, this.y, angle, weapon.speed, weapon.damage, 'player', weapon.color, isBazooka));
+                this.ammo[this.weaponIndex]--;
             } else {
                 let hitX = this.x + Math.cos(angle) * weapon.range;
                 let hitY = this.y + Math.sin(angle) * weapon.range;
@@ -129,13 +230,20 @@ class Player {
     updateUI() {
         hpUI.innerText = this.hp;
         killsUI.innerText = kills;
+        levelUI.innerText = level;
+        
+        ammo1UI.innerText = `(${this.ammo[0]})`;
+        ammo2UI.innerText = `(${this.ammo[1]})`;
+        ammo3UI.innerText = `(${this.ammo[2]})`;
+
         w1UI.innerHTML = this.weaponIndex === 0 ? ' <span class="weapon-active">&lt;--</span>' : '';
         w2UI.innerHTML = this.weaponIndex === 1 ? ' <span class="weapon-active">&lt;--</span>' : '';
         w3UI.innerHTML = this.weaponIndex === 2 ? ' <span class="weapon-active">&lt;--</span>' : '';
+        w4UI.innerHTML = this.weaponIndex === 3 ? ' <span class="weapon-active">&lt;--</span>' : '';
     }
 
     draw() {
-        ctx.fillStyle = '#3498db';
+        ctx.fillStyle = WEAPONS[this.weaponIndex].name === 'Bazooka' ? '#2ecc71' : '#3498db';
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fill();
@@ -155,14 +263,24 @@ class Enemy {
         do {
             this.x = Math.random() * canvas.width;
             this.y = Math.random() * canvas.height;
-        } while (Math.hypot(this.x - player.x, this.y - player.y) < 300 || isCollidingWithWall(this.x, this.y, 15));
+        } while (Math.hypot(this.x - player.x, this.y - player.y) < 400 || isCollidingWithWall(this.x, this.y, 15));
 
         this.radius = 15;
-        this.speed = 1.5 + Math.random();
         this.hp = 100;
         this.lastShot = 0;
         this.weaponIndex = Math.floor(Math.random() * WEAPONS.length);
-        this.fireRate = WEAPONS[this.weaponIndex].fireRate;
+        const weapon = WEAPONS[this.weaponIndex];
+        
+        this.speed = 1.5 + Math.random();
+        this.fireRate = weapon.fireRate;
+
+        if (weapon.name === 'Faca') {
+            this.speed += 2.0;
+        } else if (weapon.name === 'Fuzil') {
+            this.fireRate = 250; 
+        } else if (weapon.name === 'Bazooka') {
+            this.fireRate = 2000; 
+        }
     }
 
     update() {
@@ -172,7 +290,7 @@ class Enemy {
         if (canSeePlayer) {
             let angle = Math.atan2(player.y - this.y, player.x - this.x);
             const weapon = WEAPONS[this.weaponIndex];
-            let stopDist = weapon.type === 'melee' ? weapon.range - 5 : 120;
+            let stopDist = weapon.type === 'melee' ? weapon.range - 10 : 150;
             
             if (dist > stopDist) {
                 let dx = Math.cos(angle) * this.speed;
@@ -185,10 +303,11 @@ class Enemy {
             const now = Date.now();
             if (now - this.lastShot >= this.fireRate) {
                 if (weapon.type === 'range') {
-                    let spread = (Math.random() - 0.5) * 0.2;
-                    bullets.push(new Bullet(this.x, this.y, angle + spread, weapon.speed, weapon.damage, 'enemy', weapon.color));
+                    let isBazooka = (weapon.name === 'Bazooka');
+                    let spread = isBazooka ? 0 : (Math.random() - 0.5) * 0.2;
+                    bullets.push(new Bullet(this.x, this.y, angle + spread, weapon.speed, weapon.damage, 'enemy', weapon.color, isBazooka));
                 } else {
-                    if (dist < weapon.range + player.radius) {
+                    if (dist <= weapon.range + player.radius) {
                         player.takeDamage(weapon.damage);
                         createParticles(player.x, player.y, '#e74c3c', 5);
                     }
@@ -223,7 +342,7 @@ class Enemy {
 }
 
 class Bullet {
-    constructor(x, y, angle, speed, damage, owner, color) {
+    constructor(x, y, angle, speed, damage, owner, color, isBazooka = false) {
         this.x = x;
         this.y = y;
         this.vx = Math.cos(angle) * speed;
@@ -231,7 +350,8 @@ class Bullet {
         this.damage = damage;
         this.owner = owner;
         this.color = color;
-        this.radius = 3;
+        this.isBazooka = isBazooka;
+        this.radius = isBazooka ? 9 : 3;
         this.active = true;
     }
 
@@ -241,6 +361,7 @@ class Bullet {
 
         if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
             this.active = false;
+            if (this.isBazooka) explosions.push(new Explosion(this.x, this.y, 200, this.owner));
             return;
         }
 
@@ -249,6 +370,7 @@ class Bullet {
                 this.y > wall.y && this.y < wall.y + wall.h) {
                 this.active = false;
                 createParticles(this.x, this.y, '#95a5a6', 4);
+                if (this.isBazooka) explosions.push(new Explosion(this.x, this.y, 200, this.owner));
                 return;
             }
         }
@@ -256,17 +378,20 @@ class Bullet {
         if (this.owner === 'player') {
             for (let enemy of enemies) {
                 if (Math.hypot(enemy.x - this.x, enemy.y - this.y) < enemy.radius + this.radius) {
-                    enemy.takeDamage(this.damage);
+                    enemy.takeDamage(this.damage); 
                     this.active = false;
+                    if (this.isBazooka) explosions.push(new Explosion(this.x, this.y, 200, this.owner));
                     return;
                 }
             }
         }
 
+        // Os projéteis dos bots continuam testando colisão apenas contra o jogador
         if (this.owner === 'enemy') {
             if (Math.hypot(player.x - this.x, player.y - this.y) < player.radius + this.radius) {
-                player.takeDamage(this.damage);
+                player.takeDamage(this.damage); 
                 this.active = false;
+                if (this.isBazooka) explosions.push(new Explosion(this.x, this.y, 200, this.owner));
                 return;
             }
         }
@@ -354,11 +479,25 @@ function createParticles(x, y, color, amount) {
     }
 }
 
-// Gerenciamento e Ciclo do Jogo
-function spawnEnemies() {
-    if (enemies.length < enemyMaxLimit) {
+function startNextLevel() {
+    let enemiesToSpawn = Math.floor(Math.random() * 4) + 1;
+    
+    for(let i = 0; i < enemiesToSpawn; i++) {
         enemies.push(new Enemy());
     }
+
+    if (Math.random() > 0.3) {
+        let cx, cy;
+        do {
+            cx = Math.random() * canvas.width;
+            cy = Math.random() * canvas.height;
+        } while (isCollidingWithWall(cx, cy, 15));
+        items.push(new Item(cx, cy));
+    }
+
+    player.ammo[0] = player.maxAmmo[0];
+    player.ammo[1] = player.maxAmmo[1];
+    player.ammo[2] = player.maxAmmo[2];
 }
 
 function resetGame() {
@@ -366,20 +505,19 @@ function resetGame() {
     bullets = [];
     enemies = [];
     particles = [];
+    items = [];
+    explosions = [];
     kills = 0;
-    
-    if (!firstGameAfterDeath) {
-        enemyMaxLimit = 1;
-        firstGameAfterDeath = true;
-    } else {
-        enemyMaxLimit = 2;
-    }
+    level = 1;
     
     gameState = 'playing';
     gameoverUI.style.display = 'none';
+    
+    startNextLevel();
 }
 
 let player = new Player();
+startNextLevel();
 
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -394,7 +532,24 @@ function gameLoop() {
 
     if (gameState === 'playing') {
         player.update();
-        spawnEnemies();
+        if (enemies.length === 0) {
+            level++;
+            startNextLevel();
+        }
+    }
+
+    for (let i = items.length - 1; i >= 0; i--) {
+        let item = items[i];
+        if (gameState === 'playing') item.update();
+        item.draw();
+        if (!item.active) items.splice(i, 1);
+    }
+
+    for (let i = explosions.length - 1; i >= 0; i--) {
+        let exp = explosions[i];
+        if (gameState === 'playing') exp.update();
+        exp.draw();
+        if (!exp.active) explosions.splice(i, 1);
     }
 
     player.draw();
