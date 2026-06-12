@@ -73,29 +73,55 @@ chocolateImg.src = 'barra.png';
 const raioImg = new Image();
 raioImg.src = 'raio.png';
 
+const balaImg = new Image();
+balaImg.src = 'bala.png';
+
 class Item {
-    constructor(x, y) {
+    constructor(x, y, type = 'heal') {
         this.x = x;
         this.y = y;
+        this.type = type; // Pode ser 'heal' (vida) ou 'ammo' (munição)
         this.radius = 15;
         this.active = true;
     }
     update() {
         if (Math.hypot(player.x - this.x, player.y - this.y) < player.radius + this.radius) {
-            player.hp = Math.min(100, player.hp + 40);
-            createParticles(this.x, this.y, '#2ecc71', 15);
+            if (this.type === 'heal') {
+                player.hp = Math.min(100, player.hp + 40);
+                createParticles(this.x, this.y, '#2ecc71', 15);
+            } else if (this.type === 'ammo') {
+                // Recarrega TODAS as armas de fogo do jogador de uma vez só
+                for (let i = 0; i < player.ammo.length; i++) {
+                    player.ammo[i] = player.maxAmmo[i];
+                }
+                createParticles(this.x, this.y, '#f1c40f', 15); // Partículas douradas/amarelas
+            }
             this.active = false;
         }
     }
     draw() {
-        if (chocolateImg.complete && chocolateImg.naturalHeight !== 0) {
-            ctx.drawImage(chocolateImg, this.x - 15, this.y - 15, 30, 30);
-        } else {
-            ctx.fillStyle = '#8B4513';
-            ctx.fillRect(this.x - 10, this.y - 10, 20, 20);
-            ctx.fillStyle = '#fff';
-            ctx.font = '10px Arial';
-            ctx.fillText('barra.png', this.x - 22, this.y - 15);
+        if (this.type === 'heal') {
+            if (chocolateImg.complete && chocolateImg.naturalHeight !== 0) {
+                ctx.drawImage(chocolateImg, this.x - 15, this.y - 15, 30, 30);
+            } else {
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(this.x - 10, this.y - 10, 20, 20);
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px Arial';
+                ctx.fillText('barra.png', this.x - 22, this.y - 15);
+            }
+        } else if (this.type === 'ammo') {
+            if (balaImg.complete && balaImg.naturalHeight !== 0) {
+                ctx.drawImage(balaImg, this.x - 15, this.y - 15, 30, 30);
+            } else {
+                ctx.fillStyle = '#f1c40f';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px Arial';
+                ctx.fillText('bala.png', this.x - 20, this.y - 15);
+            }
         }
     }
 }
@@ -110,16 +136,12 @@ class Explosion {
         this.active = true;
 
         let explosionDamage = 50;
-
-        // Modificado aqui: Qualquer um no raio da explosão toma dano (independente de quem atirou)
         
-        // Verifica o jogador
         let distToPlayer = Math.hypot(player.x - this.x, player.y - this.y);
         if (distToPlayer < this.radius + player.radius) {
             player.takeDamage(explosionDamage);
         }
 
-        // Verifica todos os bots/inimigos
         enemies.forEach(enemy => {
             let distToEnemy = Math.hypot(enemy.x - this.x, enemy.y - this.y);
             if (distToEnemy < this.radius + enemy.radius) {
@@ -167,7 +189,7 @@ class Player {
     update() {
         let dx = 0, dy = 0;
         if (keys.w) dy -= this.speed;
-        if (keys.s) dy += this.speed; // Bug do dy corrigido aqui!
+        if (keys.s) dy += this.speed; 
         if (keys.a) dx -= this.speed;
         if (keys.d) dx += this.speed;
 
@@ -260,9 +282,10 @@ class Player {
 
 class Enemy {
     constructor() {
+        let margin = 30; // Margem para o bot não nascer colado na borda
         do {
-            this.x = Math.random() * canvas.width;
-            this.y = Math.random() * canvas.height;
+            this.x = margin + Math.random() * (canvas.width - margin * 2);
+            this.y = margin + Math.random() * (canvas.height - margin * 2);
         } while (Math.hypot(this.x - player.x, this.y - player.y) < 400 || isCollidingWithWall(this.x, this.y, 15));
 
         this.radius = 15;
@@ -386,7 +409,6 @@ class Bullet {
             }
         }
 
-        // Os projéteis dos bots continuam testando colisão apenas contra o jogador
         if (this.owner === 'enemy') {
             if (Math.hypot(player.x - this.x, player.y - this.y) < player.radius + this.radius) {
                 player.takeDamage(this.damage); 
@@ -486,18 +508,27 @@ function startNextLevel() {
         enemies.push(new Enemy());
     }
 
+    let margin = 30; // Margem para os itens não nascerem cortados na tela
+
+    // Drop randômico da barra de chocolate (original)
     if (Math.random() > 0.3) {
         let cx, cy;
         do {
-            cx = Math.random() * canvas.width;
-            cy = Math.random() * canvas.height;
+            cx = margin + Math.random() * (canvas.width - margin * 2);
+            cy = margin + Math.random() * (canvas.height - margin * 2);
         } while (isCollidingWithWall(cx, cy, 15));
-        items.push(new Item(cx, cy));
+        items.push(new Item(cx, cy, 'heal'));
     }
 
-    player.ammo[0] = player.maxAmmo[0];
-    player.ammo[1] = player.maxAmmo[1];
-    player.ammo[2] = player.maxAmmo[2];
+    // Drop da bala apenas a cada 2 níveis (Nível 2, 4, 6, 8...)
+    if (level % 2 === 0) {
+        let bx, by;
+        do {
+            bx = margin + Math.random() * (canvas.width - margin * 2);
+            by = margin + Math.random() * (canvas.height - margin * 2);
+        } while (isCollidingWithWall(bx, by, 15));
+        items.push(new Item(bx, by, 'ammo'));
+    }
 }
 
 function resetGame() {
