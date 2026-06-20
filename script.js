@@ -25,7 +25,9 @@ window.addEventListener('keydown', e => {
     if (e.key === '2') player.changeWeapon(1);
     if (e.key === '3') player.changeWeapon(2); 
     if (e.key === '4') player.changeWeapon(3); 
+    
     if (e.key === ' ' && gameState === 'gameover') resetGame();
+    if (e.key === ' ' && gameState === 'victory') advanceAfterBoss();
 });
 
 window.addEventListener('keyup', e => {
@@ -41,7 +43,7 @@ window.addEventListener('mousedown', () => mouse.down = true);
 window.addEventListener('mouseup', () => mouse.down = false);
 window.addEventListener('contextmenu', e => e.preventDefault());
 
-let gameState = 'playing';
+let gameState = 'playing'; // playing, gameover, victory
 let bullets = [];
 let enemies = [];
 let particles = [];
@@ -49,6 +51,7 @@ let items = [];
 let explosions = [];
 let kills = 0;
 let level = 1;
+let currentBoss = null;
 
 const WEAPONS = [
     { name: 'Pistola', damage: 25, speed: 12, fireRate: 400, color: '#aaa', type: 'range' },
@@ -69,10 +72,8 @@ const walls = [
 
 const chocolateImg = new Image();
 chocolateImg.src = 'barra.png';
-
 const raioImg = new Image();
 raioImg.src = 'raio.png';
-
 const balaImg = new Image();
 balaImg.src = 'bala.png';
 
@@ -80,21 +81,20 @@ class Item {
     constructor(x, y, type = 'heal') {
         this.x = x;
         this.y = y;
-        this.type = type; // Pode ser 'heal' (vida) ou 'ammo' (munição)
+        this.type = type; 
         this.radius = 15;
         this.active = true;
     }
     update() {
         if (Math.hypot(player.x - this.x, player.y - this.y) < player.radius + this.radius) {
             if (this.type === 'heal') {
-                player.hp = Math.min(100, player.hp + 40);
+                player.hp = Math.min(player.maxHp, player.hp + 40);
                 createParticles(this.x, this.y, '#2ecc71', 15);
             } else if (this.type === 'ammo') {
-                // Recarrega TODAS as armas de fogo do jogador de uma vez só
                 for (let i = 0; i < player.ammo.length; i++) {
                     player.ammo[i] = player.maxAmmo[i];
                 }
-                createParticles(this.x, this.y, '#f1c40f', 15); // Partículas douradas/amarelas
+                createParticles(this.x, this.y, '#f1c40f', 15);
             }
             this.active = false;
         }
@@ -108,7 +108,7 @@ class Item {
                 ctx.fillRect(this.x - 10, this.y - 10, 20, 20);
                 ctx.fillStyle = '#fff';
                 ctx.font = '10px Arial';
-                ctx.fillText('barra.png', this.x - 22, this.y - 15);
+                ctx.fillText('barra', this.x - 15, this.y - 15);
             }
         } else if (this.type === 'ammo') {
             if (balaImg.complete && balaImg.naturalHeight !== 0) {
@@ -120,7 +120,7 @@ class Item {
                 ctx.fill();
                 ctx.fillStyle = '#fff';
                 ctx.font = '10px Arial';
-                ctx.fillText('bala.png', this.x - 20, this.y - 15);
+                ctx.fillText('bala', this.x - 12, this.y - 15);
             }
         }
     }
@@ -148,6 +148,15 @@ class Explosion {
                 enemy.takeDamage(explosionDamage);
             }
         });
+
+        if (currentBoss && currentBoss.active && currentBoss.state !== 'dying') {
+            let distToBoss = Math.hypot(currentBoss.x - this.x, currentBoss.y - this.y);
+            if (distToBoss < this.radius + currentBoss.radius) {
+                if (this.owner !== 'boss') { 
+                    currentBoss.takeDamage(explosionDamage);
+                }
+            }
+        }
     }
     update() {
         this.life -= 0.04;
@@ -166,9 +175,200 @@ class Explosion {
             ctx.stroke();
             ctx.fillStyle = '#2ecc71';
             ctx.font = '14px Courier New';
-            ctx.fillText('raio.png', this.x - 30, this.y);
+            ctx.fillText('raio', this.x - 15, this.y);
         }
         ctx.restore();
+    }
+}
+
+class Boss {
+    constructor() {
+        this.x = canvas.width / 2;
+        this.y = canvas.height / 2;
+        this.radius = 30;
+        this.maxHp = 1000;
+        this.hp = 1000;
+        this.previousHp = 1000;
+        this.name = 'O Grande Mafioso'; // Sempre este nome agora
+        this.color = '#111'; 
+        this.active = true;
+
+        this.rangedWeapons = WEAPONS.filter(w => w.type === 'range');
+        this.changeWeapon();
+
+        this.state = 'intro'; 
+        this.stateTimer = Date.now();
+
+        this.lastShot = 0;
+        this.lastStomp = 0;
+        this.lastSummon = 0;
+
+        this.speed = 2;
+    }
+
+    changeWeapon() {
+        let index = Math.floor(Math.random() * this.rangedWeapons.length);
+        this.weapon = this.rangedWeapons[index];
+        this.fireRate = this.weapon.fireRate; 
+    }
+
+    takeDamage(amount) {
+        if (this.state === 'intro' || this.state === 'transition' || this.state === 'dying') return;
+
+        this.hp -= amount;
+        createParticles(this.x, this.y, '#e74c3c', 5);
+
+        if (Math.floor(this.hp / 100) < Math.floor(this.previousHp / 100)) {
+            this.changeWeapon();
+            this.previousHp = this.hp;
+        }
+
+        if (this.hp <= 500 && this.state === 'normal') {
+            this.state = 'transition';
+            this.stateTimer = Date.now();
+            this.color = '#8e44ad'; 
+            this.speed = 3.5;
+
+            let margin = 50;
+            items.push(new Item(margin + Math.random() * (canvas.width - margin*2), margin + Math.random() * (canvas.height - margin*2), 'heal'));
+            items.push(new Item(margin + Math.random() * (canvas.width - margin*2), margin + Math.random() * (canvas.height - margin*2), 'ammo'));
+        }
+
+        if (this.hp <= 0 && this.state !== 'dying') {
+            this.hp = 0;
+            this.state = 'dying';
+            createParticles(this.x, this.y, '#000', 40);
+        }
+    }
+
+    update() {
+        const now = Date.now();
+
+        if (this.state === 'intro') {
+            if (now - this.stateTimer > 2000) {
+                this.state = 'normal';
+                this.stomp(); 
+                this.lastStomp = now;
+            }
+            return;
+        }
+
+        if (this.state === 'transition') {
+            if (now - this.stateTimer > 5000) {
+                this.state = 'rage';
+                this.lastSummon = now;
+            }
+            return;
+        }
+
+        if (this.state === 'dying') {
+            this.y += 5; 
+            this.color = '#555';
+            if (this.y > canvas.height + 100) {
+                this.active = false;
+                kills += 10;
+                
+                // Ativa a tela branca de vitória
+                gameState = 'victory';
+            }
+            return;
+        }
+
+        let dist = Math.hypot(player.x - this.x, player.y - this.y);
+        let angle = Math.atan2(player.y - this.y, player.x - this.x);
+
+        if (dist > 150) {
+            let dx = Math.cos(angle) * this.speed;
+            let dy = Math.sin(angle) * this.speed;
+            if (!isCollidingWithWall(this.x + dx, this.y, this.radius)) this.x += dx;
+            if (!isCollidingWithWall(this.x, this.y + dy, this.radius)) this.y += dy;
+        }
+
+        // Lógica de Tiro Balanceada (Nerf)
+        if (now - this.lastShot >= this.fireRate) {
+            let isBazooka = (this.weapon.name === 'Bazooka');
+            
+            if (isBazooka) {
+                // Bazuca mantém o padrão de 3 tiros em cone
+                let numBullets = 3;
+                let spreadAngle = 0.6;
+                let startAngle = angle - (spreadAngle / 2);
+                let angleStep = spreadAngle / (numBullets - 1);
+                for(let i = 0; i < numBullets; i++) {
+                    bullets.push(new Bullet(this.x, this.y, startAngle + (angleStep * i), this.weapon.speed, this.weapon.damage, 'enemy', this.weapon.color, true));
+                }
+            } else {
+                // Pistola ou Fuzil: Chance de rajada tripla muito reduzida
+                let triggerChance = this.state === 'rage' ? 0.10 : 0.05; // 10% no rage, 5% normal
+                
+                if (Math.random() < triggerChance) {
+                    // Dispara Rajada Tripla
+                    let numBullets = 3;
+                    let spreadAngle = 0.3;
+                    let startAngle = angle - (spreadAngle / 2);
+                    let angleStep = spreadAngle / (numBullets - 1);
+                    for(let i = 0; i < numBullets; i++) {
+                        bullets.push(new Bullet(this.x, this.y, startAngle + (angleStep * i), this.weapon.speed, this.weapon.damage, 'enemy', this.weapon.color, false));
+                    }
+                } else {
+                    // Dispara apenas 1 bala normal (Fácil de desviar!)
+                    bullets.push(new Bullet(this.x, this.y, angle, this.weapon.speed, this.weapon.damage, 'enemy', this.weapon.color, false));
+                }
+            }
+            this.lastShot = now;
+        }
+
+        if (now - this.lastStomp >= 5000) {
+            this.stomp();
+            this.lastStomp = now;
+        }
+
+        if (this.state === 'rage' && now - this.lastSummon >= 7000) {
+            for(let i = 0; i < 3; i++) { 
+                let minion = new Enemy();
+                let tryX = this.x + (Math.random() - 0.5) * 150;
+                let tryY = this.y + (Math.random() - 0.5) * 150;
+                if(!isCollidingWithWall(tryX, tryY, minion.radius)) {
+                    minion.x = tryX;
+                    minion.y = tryY;
+                    enemies.push(minion);
+                }
+            }
+            this.lastSummon = now;
+        }
+    }
+
+    stomp() {
+        explosions.push(new Explosion(this.x, this.y, 250, 'boss'));
+    }
+
+    draw() {
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (this.state === 'intro' || this.state === 'transition') {
+            ctx.strokeStyle = '#f1c40f';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius + 15, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(this.x - 50, this.y - 50, 100, 10);
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(this.x - 50, this.y - 50, 100 * (this.hp / this.maxHp), 10);
+
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'center';
+        let statusText = '';
+        if (this.state === 'intro') statusText = ' (Invencível)';
+        if (this.state === 'transition') statusText = ' (RAGE CARREGANDO)';
+        ctx.fillText(this.name + statusText, this.x, this.y - 60);
+        ctx.textAlign = 'left'; 
     }
 }
 
@@ -178,10 +378,12 @@ class Player {
         this.y = canvas.height / 2;
         this.radius = 15;
         this.speed = 4;
+        this.maxHp = 100;
         this.hp = 100;
         this.weaponIndex = 0;
         this.lastShot = 0;
         
+        // Limites iniciais
         this.maxAmmo = [25, 100, 1, Infinity];
         this.ammo = [25, 100, 1, Infinity];
     }
@@ -235,6 +437,13 @@ class Player {
                         enemy.takeDamage(weapon.damage);
                     }
                 });
+
+                if (currentBoss && currentBoss.active && currentBoss.state !== 'dying') {
+                    let distBoss = Math.hypot(currentBoss.x - this.x, currentBoss.y - this.y);
+                    if (distBoss < weapon.range + currentBoss.radius) {
+                        currentBoss.takeDamage(weapon.damage);
+                    }
+                }
             }
             this.lastShot = now;
         }
@@ -254,9 +463,9 @@ class Player {
         killsUI.innerText = kills;
         levelUI.innerText = level;
         
-        ammo1UI.innerText = `(${this.ammo[0]})`;
-        ammo2UI.innerText = `(${this.ammo[1]})`;
-        ammo3UI.innerText = `(${this.ammo[2]})`;
+        ammo1UI.innerText = `(${this.ammo[0] === Infinity ? '∞' : this.ammo[0]})`;
+        ammo2UI.innerText = `(${this.ammo[1] === Infinity ? '∞' : this.ammo[1]})`;
+        ammo3UI.innerText = `(${this.ammo[2] === Infinity ? '∞' : this.ammo[2]})`;
 
         w1UI.innerHTML = this.weaponIndex === 0 ? ' <span class="weapon-active">&lt;--</span>' : '';
         w2UI.innerHTML = this.weaponIndex === 1 ? ' <span class="weapon-active">&lt;--</span>' : '';
@@ -282,7 +491,7 @@ class Player {
 
 class Enemy {
     constructor() {
-        let margin = 30; // Margem para o bot não nascer colado na borda
+        let margin = 30; 
         do {
             this.x = margin + Math.random() * (canvas.width - margin * 2);
             this.y = margin + Math.random() * (canvas.height - margin * 2);
@@ -407,6 +616,14 @@ class Bullet {
                     return;
                 }
             }
+            if (currentBoss && currentBoss.active && currentBoss.state !== 'dying') {
+                if (Math.hypot(currentBoss.x - this.x, currentBoss.y - this.y) < currentBoss.radius + this.radius) {
+                    currentBoss.takeDamage(this.damage);
+                    this.active = false;
+                    if (this.isBazooka) explosions.push(new Explosion(this.x, this.y, 200, this.owner));
+                    return;
+                }
+            }
         }
 
         if (this.owner === 'enemy') {
@@ -502,33 +719,61 @@ function createParticles(x, y, color, amount) {
 }
 
 function startNextLevel() {
-    let enemiesToSpawn = Math.floor(Math.random() * 4) + 1;
+    if (level === 15) {
+        // Boss Único no nível 15
+        currentBoss = new Boss();
+        enemies = []; 
+    } else {
+        currentBoss = null;
+        let enemiesToSpawn = Math.floor(Math.random() * 4) + 1;
+        
+        for(let i = 0; i < enemiesToSpawn; i++) {
+            enemies.push(new Enemy());
+        }
+
+        let margin = 30; 
+
+        // Chocolate surge normalmente em qualquer nível (30% de chance)
+        if (Math.random() > 0.3) {
+            let cx, cy;
+            do {
+                cx = margin + Math.random() * (canvas.width - margin * 2);
+                cy = margin + Math.random() * (canvas.height - margin * 2);
+            } while (isCollidingWithWall(cx, cy, 15));
+            items.push(new Item(cx, cy, 'heal'));
+        }
+
+        // Balas agora nascem estritamente a cada 3 níveis (3, 6, 9, 12, etc.)
+        if (level % 3 === 0) {
+            let bx, by;
+            do {
+                bx = margin + Math.random() * (canvas.width - margin * 2);
+                by = margin + Math.random() * (canvas.height - margin * 2);
+            } while (isCollidingWithWall(bx, by, 15));
+            items.push(new Item(bx, by, 'ammo'));
+        }
+    }
+}
+
+// Função executada ao pressionar ESPAÇO na tela de vitória
+function advanceAfterBoss() {
+    // Recompensas e melhorias de combate para o ciclo infinito
+    player.maxAmmo = [50, 200, 3, Infinity]; // Novos limites máximos
+    player.hp = player.maxHp; // Cura 100% da vida
     
-    for(let i = 0; i < enemiesToSpawn; i++) {
-        enemies.push(new Enemy());
+    // Enche os pentes com as novas capacidades
+    for (let i = 0; i < player.ammo.length; i++) {
+        player.ammo[i] = player.maxAmmo[i];
     }
 
-    let margin = 30; // Margem para os itens não nascerem cortados na tela
+    // Drops de recompensa no mapa
+    items.push(new Item(canvas.width / 2 - 30, canvas.height / 2, 'heal'));
+    items.push(new Item(canvas.width / 2 + 30, canvas.height / 2, 'ammo'));
 
-    // Drop randômico da barra de chocolate (original)
-    if (Math.random() > 0.3) {
-        let cx, cy;
-        do {
-            cx = margin + Math.random() * (canvas.width - margin * 2);
-            cy = margin + Math.random() * (canvas.height - margin * 2);
-        } while (isCollidingWithWall(cx, cy, 15));
-        items.push(new Item(cx, cy, 'heal'));
-    }
-
-    // Drop da bala apenas a cada 2 níveis (Nível 2, 4, 6, 8...)
-    if (level % 2 === 0) {
-        let bx, by;
-        do {
-            bx = margin + Math.random() * (canvas.width - margin * 2);
-            by = margin + Math.random() * (canvas.height - margin * 2);
-        } while (isCollidingWithWall(bx, by, 15));
-        items.push(new Item(bx, by, 'ammo'));
-    }
+    // Avança para o nível 16 e recomeça o ciclo infinito
+    level++;
+    gameState = 'playing';
+    startNextLevel();
 }
 
 function resetGame() {
@@ -540,6 +785,7 @@ function resetGame() {
     explosions = [];
     kills = 0;
     level = 1;
+    currentBoss = null;
     
     gameState = 'playing';
     gameoverUI.style.display = 'none';
@@ -550,7 +796,38 @@ function resetGame() {
 let player = new Player();
 startNextLevel();
 
+function drawVictoryScreen() {
+    // Fundo totalmente branco
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+
+    // Título em Negrito
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 32px Arial';
+    ctx.fillText('Parabéns, você derrotou O Grande Mafioso.', canvas.width / 2, canvas.height / 2 - 60);
+
+    // Subtexto explicativo de história
+    ctx.font = '20px Arial';
+    ctx.fillText('Mesmo tendo matado ele, ainda tem mais mafiosos por aí, então você,', canvas.width / 2, canvas.height / 2);
+    ctx.fillText('como um grande policial, ganhará melhorias no combate e deverá caçar todos eles.', canvas.width / 2, canvas.height / 2 + 35);
+
+    // Texto de comando em vermelho
+    ctx.fillStyle = '#ff0000';
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText('Aperte ESPAÇO para continuar', canvas.width / 2, canvas.height / 2 + 110);
+
+    ctx.textAlign = 'left'; // Reset do alinhamento
+}
+
 function gameLoop() {
+    if (gameState === 'victory') {
+        drawVictoryScreen();
+        requestAnimationFrame(gameLoop);
+        return; // Interrompe o loop do jogo normal para travar na tela branca
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     ctx.fillStyle = '#7f8c8d';
@@ -563,7 +840,10 @@ function gameLoop() {
 
     if (gameState === 'playing') {
         player.update();
-        if (enemies.length === 0) {
+        
+        if (currentBoss && currentBoss.active) {
+            currentBoss.update();
+        } else if (!currentBoss && enemies.length === 0) {
             level++;
             startNextLevel();
         }
@@ -584,6 +864,10 @@ function gameLoop() {
     }
 
     player.draw();
+
+    if (currentBoss && currentBoss.active) {
+        currentBoss.draw();
+    }
 
     enemies.forEach(enemy => {
         if (gameState === 'playing') enemy.update();
@@ -613,3 +897,4 @@ window.addEventListener('resize', () => {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 });
+// Feito com ódio de Fortnite
