@@ -20,12 +20,25 @@ const keys = { w: false, a: false, s: false, d: false };
 const mouse = { x: canvas.width / 2, y: canvas.height / 2, down: false };
 
 window.addEventListener('keydown', e => {
+    // Atalho secreto limitado: SÓ funciona antes do Boss (níveis menores que 15)
+    if (e.altKey && e.key.toLowerCase() === 'k' && gameState === 'playing' && level < 15) {
+        e.preventDefault();
+        level++;
+        enemies = []; 
+        bullets = []; 
+        items = [];   
+        startNextLevel();
+        return;
+    }
+
     if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = true;
     if (e.key === '1') player.changeWeapon(0);
     if (e.key === '2') player.changeWeapon(1);
     if (e.key === '3') player.changeWeapon(2); 
     if (e.key === '4') player.changeWeapon(3); 
     
+    // Controles de telas de estado
+    if (e.key === ' ' && gameState === 'intro') startGameFromIntro();
     if (e.key === ' ' && gameState === 'gameover') resetGame();
     if (e.key === ' ' && gameState === 'victory') advanceAfterBoss();
 });
@@ -43,7 +56,7 @@ window.addEventListener('mousedown', () => mouse.down = true);
 window.addEventListener('mouseup', () => mouse.down = false);
 window.addEventListener('contextmenu', e => e.preventDefault());
 
-let gameState = 'playing'; // playing, gameover, victory
+let gameState = 'intro'; // intro, playing, gameover, victory
 let bullets = [];
 let enemies = [];
 let particles = [];
@@ -189,7 +202,7 @@ class Boss {
         this.maxHp = 1000;
         this.hp = 1000;
         this.previousHp = 1000;
-        this.name = 'O Grande Mafioso'; // Sempre este nome agora
+        this.name = 'O Grande Mafioso'; 
         this.color = '#111'; 
         this.active = true;
 
@@ -267,8 +280,6 @@ class Boss {
             if (this.y > canvas.height + 100) {
                 this.active = false;
                 kills += 10;
-                
-                // Ativa a tela branca de vitória
                 gameState = 'victory';
             }
             return;
@@ -284,12 +295,10 @@ class Boss {
             if (!isCollidingWithWall(this.x, this.y + dy, this.radius)) this.y += dy;
         }
 
-        // Lógica de Tiro Balanceada (Nerf)
         if (now - this.lastShot >= this.fireRate) {
             let isBazooka = (this.weapon.name === 'Bazooka');
             
             if (isBazooka) {
-                // Bazuca mantém o padrão de 3 tiros em cone
                 let numBullets = 3;
                 let spreadAngle = 0.6;
                 let startAngle = angle - (spreadAngle / 2);
@@ -298,11 +307,9 @@ class Boss {
                     bullets.push(new Bullet(this.x, this.y, startAngle + (angleStep * i), this.weapon.speed, this.weapon.damage, 'enemy', this.weapon.color, true));
                 }
             } else {
-                // Pistola ou Fuzil: Chance de rajada tripla muito reduzida
-                let triggerChance = this.state === 'rage' ? 0.10 : 0.05; // 10% no rage, 5% normal
+                let triggerChance = this.state === 'rage' ? 0.10 : 0.05; 
                 
                 if (Math.random() < triggerChance) {
-                    // Dispara Rajada Tripla
                     let numBullets = 3;
                     let spreadAngle = 0.3;
                     let startAngle = angle - (spreadAngle / 2);
@@ -311,7 +318,6 @@ class Boss {
                         bullets.push(new Bullet(this.x, this.y, startAngle + (angleStep * i), this.weapon.speed, this.weapon.damage, 'enemy', this.weapon.color, false));
                     }
                 } else {
-                    // Dispara apenas 1 bala normal (Fácil de desviar!)
                     bullets.push(new Bullet(this.x, this.y, angle, this.weapon.speed, this.weapon.damage, 'enemy', this.weapon.color, false));
                 }
             }
@@ -383,7 +389,6 @@ class Player {
         this.weaponIndex = 0;
         this.lastShot = 0;
         
-        // Limites iniciais
         this.maxAmmo = [25, 100, 1, Infinity];
         this.ammo = [25, 100, 1, Infinity];
     }
@@ -720,7 +725,6 @@ function createParticles(x, y, color, amount) {
 
 function startNextLevel() {
     if (level === 15) {
-        // Boss Único no nível 15
         currentBoss = new Boss();
         enemies = []; 
     } else {
@@ -733,7 +737,6 @@ function startNextLevel() {
 
         let margin = 30; 
 
-        // Chocolate surge normalmente em qualquer nível (30% de chance)
         if (Math.random() > 0.3) {
             let cx, cy;
             do {
@@ -743,7 +746,6 @@ function startNextLevel() {
             items.push(new Item(cx, cy, 'heal'));
         }
 
-        // Balas agora nascem estritamente a cada 3 níveis (3, 6, 9, 12, etc.)
         if (level % 3 === 0) {
             let bx, by;
             do {
@@ -755,22 +757,23 @@ function startNextLevel() {
     }
 }
 
-// Função executada ao pressionar ESPAÇO na tela de vitória
+function startGameFromIntro() {
+    gameState = 'playing';
+    startNextLevel();
+}
+
 function advanceAfterBoss() {
-    // Recompensas e melhorias de combate para o ciclo infinito
-    player.maxAmmo = [50, 200, 3, Infinity]; // Novos limites máximos
-    player.hp = player.maxHp; // Cura 100% da vida
+    player.maxHp = 150; 
+    player.hp = 150; 
+    player.maxAmmo = [50, 200, 3, Infinity]; 
     
-    // Enche os pentes com as novas capacidades
     for (let i = 0; i < player.ammo.length; i++) {
         player.ammo[i] = player.maxAmmo[i];
     }
 
-    // Drops de recompensa no mapa
     items.push(new Item(canvas.width / 2 - 30, canvas.height / 2, 'heal'));
     items.push(new Item(canvas.width / 2 + 30, canvas.height / 2, 'ammo'));
 
-    // Avança para o nível 16 e recomeça o ciclo infinito
     level++;
     gameState = 'playing';
     startNextLevel();
@@ -794,38 +797,63 @@ function resetGame() {
 }
 
 let player = new Player();
-startNextLevel();
+
+function drawIntroScreen() {
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = 'center';
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 32px Arial';
+    ctx.fillText('OPERAÇÃO: O ÚLTIMO POLICIAL', canvas.width / 2, canvas.height / 2 - 80);
+
+    ctx.font = '20px Arial';
+    ctx.fillStyle = '#cccccc';
+    ctx.fillText('A cidade foi completamente dominada pelo cartel do Grande Mafioso.', canvas.width / 2, canvas.height / 2 - 20);
+    ctx.fillText('O departamento caiu, as comunicações foram cortadas e você é o último de pé.', canvas.width / 2, canvas.height / 2 + 15);
+    ctx.fillText('Cercado por capangas, sua única chance é limpar as ruas e eliminar a liderança.', canvas.width / 2, canvas.height / 2 + 50);
+
+    ctx.fillStyle = '#ff0000';
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText('Aperte ESPAÇO para iniciar a missão', canvas.width / 2, canvas.height / 2 + 120);
+
+    ctx.textAlign = 'left';
+}
 
 function drawVictoryScreen() {
-    // Fundo totalmente branco
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.textAlign = 'center';
 
-    // Título em Negrito
     ctx.fillStyle = '#000000';
     ctx.font = 'bold 32px Arial';
-    ctx.fillText('Parabéns, você derrotou O Grande Mafioso.', canvas.width / 2, canvas.height / 2 - 60);
+    ctx.fillText('Parabéns, você derrotou O Grande Mafioso.', canvas.width / 2, canvas.height / 2 - 80);
 
-    // Subtexto explicativo de história
     ctx.font = '20px Arial';
-    ctx.fillText('Mesmo tendo matado ele, ainda tem mais mafiosos por aí, então você,', canvas.width / 2, canvas.height / 2);
-    ctx.fillText('como um grande policial, ganhará melhorias no combate e deverá caçar todos eles.', canvas.width / 2, canvas.height / 2 + 35);
+    ctx.fillText('Mesmo tendo matado ele, ainda restam focos da máfia espalhados por aí.', canvas.width / 2, canvas.height / 2 - 20);
+    ctx.fillText('Como um bom policial, você equipou um colete tático de Kevlar, recolheu mais munições', canvas.width / 2, canvas.height / 2 + 15);
+    ctx.fillText('e agora deve continuar a caçada infinita para limpar o restante da cidade.', canvas.width / 2, canvas.height / 2 + 50);
 
-    // Texto de comando em vermelho
     ctx.fillStyle = '#ff0000';
     ctx.font = 'bold 22px Arial';
-    ctx.fillText('Aperte ESPAÇO para continuar', canvas.width / 2, canvas.height / 2 + 110);
+    ctx.fillText('Aperte ESPAÇO para continuar', canvas.width / 2, canvas.height / 2 + 120);
 
-    ctx.textAlign = 'left'; // Reset do alinhamento
+    ctx.textAlign = 'left'; 
 }
 
 function gameLoop() {
+    if (gameState === 'intro') {
+        drawIntroScreen();
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
     if (gameState === 'victory') {
         drawVictoryScreen();
         requestAnimationFrame(gameLoop);
-        return; // Interrompe o loop do jogo normal para travar na tela branca
+        return; 
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -897,4 +925,5 @@ window.addEventListener('resize', () => {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 });
+
 // Feito com ódio de Fortnite
